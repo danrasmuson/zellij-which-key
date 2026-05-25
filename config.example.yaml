@@ -1,0 +1,27 @@
+# Example zellij-which-key config.
+# Install to ~/.config/zellij-which-key/config.yaml
+
+title: Leader
+
+keys:
+  o:
+    label: open
+    keys:
+      c:
+        label: calendar
+        run: calendar-tui
+      e:
+        label: email
+        run: nu --login -c "email inbox"
+
+  g:
+    label: git
+    keys:
+      s:
+        label: status
+        run: git status; read -n1 -s -r -p 'press any key…'
+
+  # Top-level direct action example:
+  z:
+    label: lazygit
+    run: lazygit
