@@ -7,6 +7,7 @@ import { delimiter, join } from 'node:path';
 import App from './App.js';
 import { dispatch } from './actions.js';
 import { loadConfig, resolveConfigPath, ConfigError } from './config.js';
+import { renderDemo } from './demo.js';
 import type { Action } from './types.js';
 
 process.on('unhandledRejection', (error) => {
@@ -40,10 +41,13 @@ function printHelp(): void {
 	console.log(`zellij-which-key — leader-key launcher for zellij
 
 Usage:
-  zellij-which-key [--config PATH]
+  zellij-which-key [--config PATH] [--demo PATH]
 
 Options:
   --config PATH   Path to YAML config (default: $XDG_CONFIG_HOME/zellij-which-key/config.yaml)
+  --demo PATH     Print the menu at PATH (e.g. "" for root, "o" for the
+                  "open" submenu) as ANSI to stdout and exit. Used by the
+                  screenshot script.
   -h, --help      Show this help
 
 Env:
@@ -53,8 +57,13 @@ Config format: see README.
 `);
 }
 
-function parseArgs(argv: string[]): { configPath?: string } {
-	const out: { configPath?: string } = {};
+interface Args {
+	configPath?: string;
+	demoPath?: string[];
+}
+
+function parseArgs(argv: string[]): Args {
+	const out: Args = {};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === '-h' || a === '--help') {
@@ -64,6 +73,10 @@ function parseArgs(argv: string[]): { configPath?: string } {
 			out.configPath = argv[++i];
 		} else if (a.startsWith('--config=')) {
 			out.configPath = a.slice('--config='.length);
+		} else if (a === '--demo') {
+			out.demoPath = (argv[++i] ?? '').split('').filter(Boolean);
+		} else if (a.startsWith('--demo=')) {
+			out.demoPath = a.slice('--demo='.length).split('').filter(Boolean);
 		} else {
 			console.error(`unknown argument: ${a}`);
 			process.exit(2);
@@ -73,7 +86,7 @@ function parseArgs(argv: string[]): { configPath?: string } {
 }
 
 async function main() {
-	const { configPath } = parseArgs(process.argv.slice(2));
+	const { configPath, demoPath } = parseArgs(process.argv.slice(2));
 
 	let config;
 	try {
@@ -85,6 +98,11 @@ async function main() {
 			process.exit(1);
 		}
 		throw err;
+	}
+
+	if (demoPath !== undefined) {
+		process.stdout.write(renderDemo(config, demoPath));
+		process.exit(0);
 	}
 
 	let chosen: { action: Action; path: string[] } | null = null;
