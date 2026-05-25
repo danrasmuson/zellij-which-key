@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
-import type { Config, Entry, SubmenuEntry } from './types.js';
+import type { Action, Config, Entry, SubmenuEntry } from './types.js';
 import { isLeaf, isSubmenu } from './types.js';
 
 interface AppProps {
 	config: Config;
 	/** Called when the user selects a leaf. The app unmounts after this fires. */
-	onSelect: (leaf: { cmd: string; cwd?: string; path: string[] }) => void;
+	onSelect: (leaf: { action: Action; path: string[] }) => void;
 }
 
 interface MenuRow {
@@ -96,11 +96,7 @@ export default function App({ config, onSelect }: AppProps) {
 			return;
 		}
 		if (isLeaf(entry)) {
-			onSelect({
-				cmd: entry.run,
-				cwd: entry.cwd,
-				path: [...path, input],
-			});
+			onSelect({ action: entry.action, path: [...path, input] });
 			exit();
 			return;
 		}

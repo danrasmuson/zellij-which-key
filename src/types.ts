@@ -1,20 +1,57 @@
 // Configuration schema for zellij-which-key.
 //
-// The config is a tree of menus. Each entry under `keys` is either:
-//   - a leaf (has `run`) -- pressing the key executes that command
-//   - a submenu (has `keys`) -- pressing the key descends into it
+// The config is a tree of menus. Each node under `keys` is either a
+// **submenu** (has nested `keys`) or a **leaf** (has exactly one action
+// field: `run`, `pane`, `tab`, or `zellij`).
 //
-// Optional fields:
-//   - label: human-readable name shown next to the key
-//   - desc: longer description (unused for now, reserved for richer UI)
+// Inspired by which-key.nvim's design: a leaf's rhs is a typed *action*
+// rather than just "exec a string". This lets us spawn into a new pane,
+// open a new tab, run arbitrary `zellij action` calls, etc., without
+// coupling everything to "replace the current pane".
+
+/* ---------------------------------------------------------------- actions */
+
+/** Replace the current (floating) pane with the command. */
+export interface RunAction {
+	kind: 'run';
+	cmd: string;
+	cwd?: string;
+}
+
+/** Open the command in a new zellij pane, then close the which-key pane. */
+export interface PaneAction {
+	kind: 'pane';
+	cmd: string;
+	floating?: boolean;
+	close_on_exit?: boolean;
+	name?: string;
+	cwd?: string;
+	direction?: 'right' | 'down';
+}
+
+/** Open the command in a new zellij tab. */
+export interface TabAction {
+	kind: 'tab';
+	cmd?: string;
+	name?: string;
+	cwd?: string;
+	layout?: string;
+}
+
+/** Run an arbitrary `zellij action <args>` command. */
+export interface ZellijAction {
+	kind: 'zellij';
+	args: string[];
+}
+
+export type Action = RunAction | PaneAction | TabAction | ZellijAction;
+
+/* ---------------------------------------------------------------- entries */
 
 export interface LeafEntry {
 	label?: string;
 	desc?: string;
-	/** Shell command line to run. Executed via `sh -c` so pipes/quoting work. */
-	run: string;
-	/** Working directory for the command. Defaults to $HOME. */
-	cwd?: string;
+	action: Action;
 }
 
 export interface SubmenuEntry {
@@ -26,7 +63,6 @@ export interface SubmenuEntry {
 export type Entry = LeafEntry | SubmenuEntry;
 
 export interface Config {
-	/** Title shown in the header. Defaults to "Leader". */
 	title?: string;
 	keys: Record<string, Entry>;
 }
@@ -36,5 +72,29 @@ export function isSubmenu(entry: Entry): entry is SubmenuEntry {
 }
 
 export function isLeaf(entry: Entry): entry is LeafEntry {
-	return (entry as LeafEntry).run !== undefined;
+	return (entry as LeafEntry).action !== undefined;
+}
+
+/* ---------------------------------------------------------------- raw input */
+
+/**
+ * Raw entry shape as it appears in YAML, before normalization. Each leaf
+ * has exactly one of the action shorthand fields.
+ */
+export interface RawLeafEntry {
+	label?: string;
+	desc?: string;
+	cwd?: string;
+
+	/** Shorthand: `run: <cmd>` -> RunAction. */
+	run?: string;
+
+	/** `pane: <cmd>` or `pane: { cmd, floating?, ... }` -> PaneAction. */
+	pane?: string | Omit<PaneAction, 'kind'>;
+
+	/** `tab: <cmd>` or `tab: { cmd?, name?, ... }` -> TabAction. */
+	tab?: string | Omit<TabAction, 'kind'>;
+
+	/** `zellij: [args...]` -> ZellijAction. */
+	zellij?: string[] | string;
 }

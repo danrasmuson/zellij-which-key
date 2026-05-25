@@ -2,8 +2,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { Config, Entry } from './types.js';
-import { isLeaf, isSubmenu } from './types.js';
+import type {
+	Action,
+	Config,
+	Entry,
+	LeafEntry,
+	RawLeafEntry,
+	SubmenuEntry,
+} from './types.js';
 
 /**
  * Resolve the config file path.
@@ -49,11 +55,12 @@ export function loadConfig(path: string = resolveConfigPath()): Config {
 			path,
 		);
 	}
-	validateConfig(data, path);
-	return data as Config;
+	return normalizeConfig(data, path);
 }
 
-function validateConfig(data: unknown, path: string): asserts data is Config {
+/* ------------------------------------------------------------ normalization */
+
+function normalizeConfig(data: unknown, path: string): Config {
 	if (!data || typeof data !== 'object') {
 		throw new ConfigError('config must be a YAML mapping', path);
 	}
@@ -61,48 +68,141 @@ function validateConfig(data: unknown, path: string): asserts data is Config {
 	if (!cfg.keys || typeof cfg.keys !== 'object') {
 		throw new ConfigError('config must have a `keys` mapping', path);
 	}
-	validateKeys(cfg.keys as Record<string, unknown>, ['keys'], path);
+	return {
+		title: typeof cfg.title === 'string' ? cfg.title : undefined,
+		keys: normalizeKeys(
+			cfg.keys as Record<string, unknown>,
+			['keys'],
+			path,
+		),
+	};
 }
 
-function validateKeys(
+function normalizeKeys(
 	keys: Record<string, unknown>,
 	trail: string[],
 	path: string,
-): void {
+): Record<string, Entry> {
+	const out: Record<string, Entry> = {};
 	for (const [k, raw] of Object.entries(keys)) {
 		if (k.length === 0) {
-			throw new ConfigError(
-				`empty key at ${trail.join('.')}`,
-				path,
-			);
+			throw new ConfigError(`empty key at ${trail.join('.')}`, path);
 		}
-		if (!raw || typeof raw !== 'object') {
-			throw new ConfigError(
-				`entry at ${[...trail, k].join('.')} must be a mapping`,
-				path,
-			);
-		}
-		const entry = raw as Entry;
-		const hasRun = isLeaf(entry);
-		const hasKeys = isSubmenu(entry);
-		if (hasRun && hasKeys) {
-			throw new ConfigError(
-				`entry at ${[...trail, k].join('.')} has both \`run\` and \`keys\`; pick one`,
-				path,
-			);
-		}
-		if (!hasRun && !hasKeys) {
-			throw new ConfigError(
-				`entry at ${[...trail, k].join('.')} needs either \`run\` or \`keys\``,
-				path,
-			);
-		}
-		if (hasKeys) {
-			validateKeys(
-				(entry as { keys: Record<string, unknown> }).keys,
-				[...trail, k, 'keys'],
-				path,
-			);
-		}
+		out[k] = normalizeEntry(raw, [...trail, k], path);
 	}
+	return out;
+}
+
+function normalizeEntry(
+	raw: unknown,
+	trail: string[],
+	path: string,
+): Entry {
+	if (!raw || typeof raw !== 'object') {
+		throw new ConfigError(
+			`entry at ${trail.join('.')} must be a mapping`,
+			path,
+		);
+	}
+	const r = raw as Record<string, unknown>;
+	const isSubmenu = r.keys !== undefined;
+	if (isSubmenu) {
+		if (typeof r.keys !== 'object' || r.keys === null) {
+			throw new ConfigError(
+				`entry at ${trail.join('.')}.keys must be a mapping`,
+				path,
+			);
+		}
+		const sub: SubmenuEntry = {
+			label: typeof r.label === 'string' ? r.label : undefined,
+			desc: typeof r.desc === 'string' ? r.desc : undefined,
+			keys: normalizeKeys(
+				r.keys as Record<string, unknown>,
+				[...trail, 'keys'],
+				path,
+			),
+		};
+		return sub;
+	}
+	// Leaf: must have exactly one action field.
+	const action = normalizeAction(r as RawLeafEntry, trail, path);
+	const leaf: LeafEntry = {
+		label: typeof r.label === 'string' ? r.label : undefined,
+		desc: typeof r.desc === 'string' ? r.desc : undefined,
+		action,
+	};
+	return leaf;
+}
+
+function normalizeAction(
+	r: RawLeafEntry,
+	trail: string[],
+	path: string,
+): Action {
+	const present: string[] = [];
+	if (r.run !== undefined) present.push('run');
+	if (r.pane !== undefined) present.push('pane');
+	if (r.tab !== undefined) present.push('tab');
+	if (r.zellij !== undefined) present.push('zellij');
+	if (present.length === 0) {
+		throw new ConfigError(
+			`entry at ${trail.join('.')} needs an action ` +
+				`(one of: run, pane, tab, zellij, keys)`,
+			path,
+		);
+	}
+	if (present.length > 1) {
+		throw new ConfigError(
+			`entry at ${trail.join('.')} has conflicting actions: ` +
+				present.join(', '),
+			path,
+		);
+	}
+
+	if (r.run !== undefined) {
+		if (typeof r.run !== 'string') {
+			throw new ConfigError(
+				`entry at ${trail.join('.')}.run must be a string`,
+				path,
+			);
+		}
+		return { kind: 'run', cmd: r.run, cwd: r.cwd };
+	}
+
+	if (r.pane !== undefined) {
+		const p =
+			typeof r.pane === 'string' ? { cmd: r.pane } : { ...r.pane };
+		if (typeof p.cmd !== 'string') {
+			throw new ConfigError(
+				`entry at ${trail.join('.')}.pane needs a \`cmd\` string`,
+				path,
+			);
+		}
+		return { kind: 'pane', ...p } as Action;
+	}
+
+	if (r.tab !== undefined) {
+		const t =
+			typeof r.tab === 'string' ? { cmd: r.tab } : { ...r.tab };
+		return { kind: 'tab', ...t } as Action;
+	}
+
+	if (r.zellij !== undefined) {
+		const args = Array.isArray(r.zellij)
+			? r.zellij
+			: typeof r.zellij === 'string'
+				? r.zellij.split(/\s+/).filter(Boolean)
+				: null;
+		if (!args || !args.every((a) => typeof a === 'string')) {
+			throw new ConfigError(
+				`entry at ${trail.join('.')}.zellij must be a string ` +
+					`or list of strings`,
+				path,
+			);
+		}
+		return { kind: 'zellij', args };
+	}
+
+	// Unreachable.
+	throw new ConfigError(`entry at ${trail.join('.')} is malformed`, path);
 }

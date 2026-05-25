@@ -4,24 +4,46 @@
 title: Leader
 
 keys:
+
+  # +---------------------------------------------------------+
+  # | "open" submenu                                          |
+  # +---------------------------------------------------------+
   o:
     label: open
     keys:
+      # `run` -> the floating which-key pane *becomes* the command.
+      # Best for full-screen TUIs that take over the pane.
       c:
         label: calendar
         run: calendar-tui
-      e:
-        label: email
-        run: nu --login -c "email inbox"
 
-  g:
-    label: git
-    keys:
-      s:
-        label: status
-        run: git status; read -n1 -s -r -p 'press any key…'
+      # `pane` -> spawn the command in a NEW zellij pane via
+      # `zellij action new-pane`, then close the which-key pane.
+      l:
+        label: lazygit (floating)
+        pane:
+          cmd: lazygit
+          floating: true
 
-  # Top-level direct action example:
+      # `tab` -> open a new zellij tab. `cmd` is not supported yet (zellij
+      # CLI limitation); use a layout file or follow with a `pane` action.
+      t:
+        label: terminal tab
+        tab:
+          name: scratch
+
+  # +---------------------------------------------------------+
+  # | zellij navigation via raw `zellij action` calls         |
+  # +---------------------------------------------------------+
   z:
-    label: lazygit
-    run: lazygit
+    label: zellij
+    keys:
+      d:
+        label: detach
+        zellij: [detach]
+      n:
+        label: next tab
+        zellij: [go-to-next-tab]
+      p:
+        label: previous tab
+        zellij: [go-to-previous-tab]

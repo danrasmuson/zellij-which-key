@@ -33,21 +33,44 @@ keys:
         run: calendar-tui
 ```
 
-Each entry under `keys` is either:
+Each entry under `keys` is either a **submenu** (has nested `keys:`) or a
+**leaf** with exactly one *action* field. Inspired by
+[which-key.nvim](https://github.com/folke/which-key.nvim)'s design — the
+leaf's rhs is a typed action, not just "exec a string".
 
-- a **leaf** with a `run:` shell command, or
-- a **submenu** with a nested `keys:` map.
+### Action types
 
-Optional fields:
+| field    | shape                                | behavior                                                                 |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------ |
+| `run`    | string                               | replace the (floating) which-key pane with the command (`sh -c <cmd>`)   |
+| `pane`   | string \| `{ cmd, floating?, ... }`  | open a new zellij pane via `zellij action new-pane`, close which-key pane |
+| `tab`    | string \| `{ cmd?, name?, ... }`     | open a new zellij tab via `zellij action new-tab`                        |
+| `zellij` | list of strings                      | run `zellij action <args...>` directly (detach, go-to-next-tab, ...)     |
 
-| field   | type   | notes                                                     |
-| ------- | ------ | --------------------------------------------------------- |
-| `label` | string | shown next to the key in the UI (defaults to the key)     |
-| `run`   | string | shell command, executed via `sh -c` (leaf only)           |
-| `cwd`   | string | working directory for `run` (defaults to `$HOME`)         |
-| `keys`  | map    | nested submenu (submenu only)                             |
+Shared optional fields on any leaf: `label`, `desc`, `cwd`.
 
-The config path can also be overridden via `--config PATH` or
+### Example
+
+```yaml
+keys:
+  o:
+    label: open
+    keys:
+      c:
+        label: calendar
+        run: calendar-tui                # take over this pane
+      l:
+        label: lazygit (floating)
+        pane: { cmd: lazygit, floating: true }
+  z:
+    label: zellij
+    keys:
+      d:
+        label: detach
+        zellij: [detach]
+```
+
+The config path can be overridden via `--config PATH` or
 `$ZELLIJ_WHICH_KEY_CONFIG`.
 
 ## Wire it into zellij

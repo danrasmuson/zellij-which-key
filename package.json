@@ -1,6 +1,6 @@
 {
   "name": "zellij-which-key",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "which-key style leader-key launcher for zellij, rendered with Ink",
   "type": "module",
   "main": "dist/index.js",

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import React from 'react';
 import { render } from 'ink';
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import App from './App.js';
+import { dispatch } from './actions.js';
 import { loadConfig, resolveConfigPath, ConfigError } from './config.js';
+import type { Action } from './types.js';
 
 process.on('unhandledRejection', (error) => {
 	console.error('Unhandled promise rejection:', error);
@@ -22,6 +23,7 @@ function extendPath(): void {
 		join(home, '.local/bin'),
 		join(home, '.local/share/pnpm'),
 		join(home, '.local/share/omarchy/bin'),
+		join(home, '.local/share/mise/installs/node/latest/bin'),
 		join(home, '.cargo/bin'),
 		join(home, 'bin'),
 	];
@@ -85,9 +87,7 @@ async function main() {
 		throw err;
 	}
 
-	let chosen:
-		| { cmd: string; cwd?: string; path: string[] }
-		| null = null;
+	let chosen: { action: Action; path: string[] } | null = null;
 
 	const app = render(
 		<App
@@ -109,23 +109,7 @@ async function main() {
 		process.exit(0);
 	}
 
-	// Spawn the chosen command via `sh -c` so users can write pipelines and
-	// shell quoting in the config. stdio is fully inherited so a TUI like
-	// calendar-tui takes over the floating pane.
-	const c = chosen as { cmd: string; cwd?: string; path: string[] };
-	const child = spawn('sh', ['-c', c.cmd], {
-		stdio: 'inherit',
-		cwd: c.cwd || homedir(),
-		env: process.env,
-	});
-	child.on('exit', (code, signal) => {
-		if (signal) process.kill(process.pid, signal);
-		else process.exit(code ?? 0);
-	});
-	child.on('error', (err) => {
-		console.error(`zellij-which-key: failed to spawn: ${err.message}`);
-		process.exit(127);
-	});
+	dispatch((chosen as { action: Action }).action);
 }
 
 main();
